@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot"
+version = "0.5.2"
+description = "🤗 LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch"
+dynamic = ["readme"]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+authors = [
+    { name = "Ethan Guan", email = "ethanguan5571@gmail.com" },
+]
+
+keywords = ["lerobot", "huggingface", "robotics",  "machine learning", "artificial intelligence"]
+
+[app.python]
+DEBUG=true
+
+# speech to text
+WHISPER_PAUSE_THRESHOLD=0.5 # default = 0.8
+TTS_RATE=180 # in wpm
+TTS_VOLUME=1.0 # 0.0 - 1.0
+
+# camera
+CAMERA_PATH=0
+YOLO_MODEL_PATH="yolo11n.pt"
+
+# intent classifier
+SYSTEM_PROMPT=""
+
+# task planner
+ROBOT_ACTIONS=["pick_up", "drop_off", "move_to", "home", "stop", "wave"]
+ROBOT_HOME_POSITION=[0, 0, 100]
+
+# serial
+SERIAL_PORT="COM3"
+
+[app.arduino]
+
