@@ -1,34 +1,25 @@
 import time
 import threading
 import queue
-import sys
 
 import cv2
 
-from camera.camera import create_detector
 from config import TOOL_CONFIG
+from arduino.seralizer import get_arduino
+from camera.camera import create_detector
 from speech.text_to_speech import announce_status
 from threads import (
-    FrameData,
-    AudioData,
-    IntentData,
-    TaskData,
+    LatestFrameState,
     camera_thread_worker,
-    microphone_thread_worker,
-    whisper_thread_worker,
-    intent_parser_thread_worker,
-    robot_state_machine_thread_worker,
+    command_thread_worker,
 )
 
 
 def main() -> None:
     """
-    Main coordinator thread that spawns and manages 5 worker threads:
+    Main coordinator thread that spawns and manages 2 worker threads:
     1. Camera + YOLO detection
-    2. Microphone capture (voice input)
-    3. Whisper transcription (audio to text)
-    4. Intent parsing (text to commands)
-    5. Robot state machine (execute commands)
+    2. Voice command processing + robot state machine
     """
     print("\n" + "=" * 70)
     print("Robot Brain Starting - Multi-threaded Architecture")
@@ -44,22 +35,18 @@ def main() -> None:
 
     # Arduino initialization (commented out if not available)
     arduino = None
-    # try:
-    #     serial_port = TOOL_CONFIG.get("SERIAL_PORT", "COM3")
-    #     arduino = get_arduino(serial_port)
-    #     print(f"[Main] Arduino connected on {serial_port}.")
-    # except Exception as e:
-    #     print(f"[Main] Arduino connection failed: {e}")
+    try:
+        serial_port = TOOL_CONFIG.get("SERIAL_PORT", "COM3")
+        arduino = get_arduino(serial_port)
+        print(f"[Main] Arduino connected on {serial_port}.")
+    except Exception as e:
+        print(f"[Main] Arduino connection failed: {e}")
 
-    # Create queues for inter-thread communication
-    camera_queue = queue.Queue(maxsize=2)  # Keep only 2 latest frames
-    microphone_queue = queue.Queue()
-    microphone_control_queue = queue.Queue()  # Control queue for triggering microphone capture
-    whisper_queue = queue.Queue()
-    intent_parser_queue = queue.Queue()
-    robot_queue = queue.Queue()
+    # Share only the newest camera result so command processing never uses stale frames.
+    latest_frame_state = LatestFrameState()
+    command_control_queue = queue.Queue()
 
-    # Shared stop event for gracefulc shutdown
+    # Shared stop event for graceful shutdown
     stop_event = threading.Event()
 
     # Create and start worker threads
@@ -67,31 +54,13 @@ def main() -> None:
         threading.Thread(
             name="Camera",
             target=camera_thread_worker,
-            args=(camera_queue, stop_event, model),
+            args=(latest_frame_state, stop_event, model),
             daemon=False,
         ),
         threading.Thread(
-            name="Microphone",
-            target=microphone_thread_worker,
-            args=(microphone_queue, microphone_control_queue, stop_event),
-            daemon=False,
-        ),
-        threading.Thread(
-            name="Whisper",
-            target=whisper_thread_worker,
-            args=(microphone_queue, whisper_queue, stop_event),
-            daemon=False,
-        ),
-        threading.Thread(
-            name="IntentParser",
-            target=intent_parser_thread_worker,
-            args=(camera_queue, whisper_queue, intent_parser_queue, stop_event),
-            daemon=False,
-        ),
-        threading.Thread(
-            name="RobotStateMachine",
-            target=robot_state_machine_thread_worker,
-            args=(intent_parser_queue, stop_event, arduino),
+            name="CommandProcessor",
+            target=command_thread_worker,
+            args=(command_control_queue, latest_frame_state, stop_event, arduino),
             daemon=False,
         ),
     ]
@@ -128,7 +97,7 @@ def main() -> None:
     input_thread = threading.Thread(
         name="InputHandler",
         target=input_thread_worker,
-        args=(microphone_control_queue, stop_event),
+        args=(command_control_queue, stop_event),
         daemon=True,
     )
     input_thread.start()

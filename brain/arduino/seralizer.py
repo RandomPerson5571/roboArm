@@ -4,7 +4,21 @@ import serial
 
 from typing import Any
 
-from intent.step_types import TaskPlan
+from config import TOOL_CONFIG
+
+CANCEL_COMMAND = "CANCEL"
+ARDUINO_READY = "Ready"
+ARDUINO_SUCCESS = "SUCCESS"
+ARDUINO_ERROR = "ERROR"
+ARDUINO_CANCELLED = "CANCELLED"
+
+_STATUS_MAP = {
+    ARDUINO_SUCCESS: "success",
+    ARDUINO_ERROR: "error",
+    ARDUINO_CANCELLED: "cancelled",
+    ARDUINO_READY: "ready",
+}
+
 
 def parse_classifier_response(raw_response: Any) -> dict[str, Any]:
     if isinstance(raw_response, dict):
@@ -28,29 +42,86 @@ def parse_classifier_response(raw_response: Any) -> dict[str, Any]:
 
     raise ValueError("Could not parse classifier response as JSON.")
 
-def get_arduino(port='COM3'):
-    arduino = serial.Serial(port=port, baudrate=115200, timeout=0.1)
-    time.sleep(2)
 
+def parse_arduino_response(line: str) -> dict[str, Any] | None:
+    """Map a single Arduino serial line to a status dictionary."""
+    text = line.strip()
+    if not text:
+        return None
+
+    status = _STATUS_MAP.get(text)
+    if status is None:
+        print(f"[Arduino] Ignoring unrecognized response: {text}")
+        return None
+
+    return {"status": status, "raw": text}
+
+
+def read_arduino_line(arduino: serial.Serial) -> str | None:
+    raw = arduino.readline()
+    if not raw:
+        return None
+
+    line = raw.decode("utf-8", errors="ignore").strip()
+    return line or None
+
+
+def wait_for_arduino_response(
+    arduino: serial.Serial,
+    *,
+    timeout_seconds: float = 30,
+    ignore_ready: bool = True,
+) -> dict[str, Any]:
+    """Wait for a recognized Arduino response line."""
+    deadline = time.time() + timeout_seconds
+
+    while time.time() < deadline:
+        line = read_arduino_line(arduino)
+        if line is None:
+            continue
+
+        parsed = parse_arduino_response(line)
+        if parsed is None:
+            continue
+
+        if ignore_ready and parsed["status"] == "ready":
+            continue
+
+        return parsed
+
+    raise TimeoutError("Timed out waiting for Arduino response.")
+
+
+def get_arduino(
+    port: str = TOOL_CONFIG.get("SERIAL_PORT", "COM3"),
+    baudrate: int = TOOL_CONFIG.get("SERIAL_BAUDRATE", 115200),
+) -> serial.Serial:
+    arduino = serial.Serial(port=port, baudrate=baudrate, timeout=0.1)
+    time.sleep(2)
+    arduino.reset_input_buffer()
+
+    response = wait_for_arduino_response(
+        arduino,
+        timeout_seconds=10,
+        ignore_ready=False,
+    )
+    if response.get("status") != "ready":
+        raise RuntimeError(f"Expected '{ARDUINO_READY}' on connect, got: {response.get('raw')}")
+
+    print("[Arduino] Connected and ready.")
     return arduino
 
-def send_json_data(arduino, data: TaskPlan):
-    # send a plan containing a single task so Arduino receives plan/task/step format
-    payload = {"plan": [data]}
-    json_string = json.dumps(payload) + "\n"
 
-    arduino.write(json_string.encode('utf-8'))
-    print(f"Sent: {json_string}")
+def send_data(arduino: serial.Serial, data: str) -> None:
+    arduino.write(data.encode("utf-8"))
+    print(f"Sent: {data.rstrip()}")
 
-def wait_for_arduino(arduino) -> dict[str, any]:
-    response_line = arduino.readline()
-    if not response_line:
-        return {}
 
-    response_text = response_line.decode('utf-8', errors='ignore').strip()
-    if not response_text:
-        return {}
+def send_servo_angles(arduino: serial.Serial, angles_line: str) -> None:
+    """Send a comma-separated servo angle command."""
+    send_data(arduino, f"{angles_line}\n")
 
-    return json.loads(response_text)
 
-    return json_payload
+def send_cancel(arduino: serial.Serial) -> None:
+    """Send the firmware cancel command."""
+    send_data(arduino, f"{CANCEL_COMMAND}\n")

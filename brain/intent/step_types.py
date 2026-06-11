@@ -1,5 +1,4 @@
 from typing import Literal, TypedDict
-from dataclasses import dataclass
 
 class MoveStep(TypedDict):
     type: Literal["move"]
@@ -22,7 +21,6 @@ class StopStep(TypedDict):
 
 Step = MoveStep | GripperStep | HomeStep | StopStep
 
-@dataclass
 class TaskPlan(TypedDict):
     task: str
     steps: list[Step]

@@ -1,10 +1,6 @@
-from pydantic import BaseModel, Field, create_model, model_validator
+from pydantic import BaseModel, Field, create_model
 from typing import Literal, Optional, List
 from enum import StrEnum
-
-class IntentModels(StrEnum):
-    GEMENI="gemeni"
-    LLAMA="llama3.2"
 
 class Intent(StrEnum):
     PICK_UP = "pick_up"

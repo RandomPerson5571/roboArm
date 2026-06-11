@@ -1,16 +1,20 @@
-import pyttsx3
-
 from config import TOOL_CONFIG
 
-engine = pyttsx3.init()
-engine.setProperty("volume", TOOL_CONFIG["TTS_VOLUME"] or 1.0)
-engine.setProperty("rate", TOOL_CONFIG["TTS_RATE"] or 180)
+from gtts import gTTS
+import os
+
+language = TOOL_CONFIG.get("Language", "en")
 
 def announce_actions(text: str):
-   engine.say(text)
-   engine.runAndWait()
+   tts = gTTS(text=text, lang=language, slow=False)
+
+   # Save the speech into an MP3 file
+   audio_file = "output.mp3"
+   tts.save(audio_file)
+
+   os.system(f"start {audio_file}")  # Use 'open' instead of 'start' on macOS
 
 
 def announce_status(message: str) -> None:
     print(message)
-    announce_actions(message)
+   #  announce_actions(message)

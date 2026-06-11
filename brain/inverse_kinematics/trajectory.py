@@ -1,28 +1,27 @@
-"""
-Motion planning and joint trajectory computation.
-"""
+"""Motion planning and joint trajectory computation."""
+
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Sequence
 
 from config import TOOL_CONFIG
+from inverse_kinematics.ikypy_config import SERVO_NAMES
+from inverse_kinematics.kinematics import compute_ik_angles, format_servo_angles
 from utils.module_loader import load_module_from_relative_path
-
 
 DEFAULT_ARM_LINK_LENGTHS_CM = (20.0, 20.0)
 
-# Load kinematics and path planning modules
-_kinematics_module = load_module_from_relative_path(
-    "roboarm_kinematics",
-    Path("inverse_kinematics") / "kinematics.py",
-)
 _path_planner_module = load_module_from_relative_path(
     "roboarm_path_planner",
     Path("path-planner") / "path_planner.py",
 )
-
-compute_ik_angles = _kinematics_module.compute_ik_angles
 plan_joint_path = _path_planner_module.plan_joint_path
-interpolate_joint_path = _path_planner_module.interpolate_joint_path
+
+
+def _default_link_lengths() -> tuple[float, float]:
+    configured = TOOL_CONFIG.get("ROBOT_ARM_LINK_LENGTHS", DEFAULT_ARM_LINK_LENGTHS_CM)
+    return tuple(float(value) for value in configured)
 
 
 def compute_joint_trajectory_for_target(
@@ -34,43 +33,34 @@ def compute_joint_trajectory_for_target(
     timestep: float = 0.02,
     max_step_deg: float = 2.0,
 ) -> list[list[float]]:
-    """
-    Compute joint trajectory for a target position using inverse kinematics.
-    
-    Args:
-        target_xyz_cm: Target position (x, y, z) in centimeters
-        start_angles: Starting joint angles (base, shoulder, elbow)
-        link_lengths_cm: Robot arm link lengths
-        elbow_up: Whether elbow should be up
-        duration: Motion duration in seconds
-        timestep: Timestep for interpolation
-        max_step_deg: Maximum step per timestep in degrees
-        
-    Returns:
-        List of joint angle trajectories
-    """
+    """Compute a joint trajectory for a target position using inverse kinematics."""
     if len(target_xyz_cm) != 3:
         raise ValueError("target_xyz_cm must contain exactly three values.")
 
     if start_angles is None:
-        start_angles = [0.0, 0.0, 0.0]
-    if len(start_angles) != 3:
-        raise ValueError("start_angles must contain exactly three values.")
+        start_angles = [0.0] * len(SERVO_NAMES)
+    if len(start_angles) != len(SERVO_NAMES):
+        raise ValueError(f"start_angles must contain exactly {len(SERVO_NAMES)} values.")
 
-    if link_lengths_cm is None:
-        link_lengths = tuple(
-            float(value)
-            for value in TOOL_CONFIG.get("ROBOT_ARM_LINK_LENGTHS", DEFAULT_ARM_LINK_LENGTHS_CM)
-        )
-    else:
-        link_lengths = tuple(float(value) for value in link_lengths_cm)
+    link_lengths = (
+        tuple(float(value) for value in link_lengths_cm)
+        if link_lengths_cm is not None
+        else _default_link_lengths()
+    )
+
+    target_angles = [
+        compute_ik_angles(
+            tuple(float(value) for value in target_xyz_cm),
+            link_lengths,
+            elbow_up=elbow_up,
+            use_chain_solver=True,
+        )[key]
+        for key in SERVO_NAMES
+    ]
 
     return plan_joint_path(
         start_angles,
-        [
-            compute_ik_angles(target_xyz_cm, link_lengths, elbow_up=elbow_up, use_chain_solver=False)[key]
-            for key in ("base", "shoulder", "elbow")
-        ],
+        target_angles,
         duration=duration,
         timestep=timestep,
         max_step_deg=max_step_deg,
@@ -78,27 +68,38 @@ def compute_joint_trajectory_for_target(
 
 
 def prepare_motion_plan(task_plan: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Prepare motion plan from task plan by computing joint trajectories.
-    
-    Args:
-        task_plan: Task plan containing steps
-        
-    Returns:
-        List of motion steps with computed joint paths
-    """
+    """Prepare a motion plan from a task plan by computing joint trajectories."""
     motion_plan: list[dict[str, Any]] = []
-    current_angles = [0.0, 0.0, 0.0]
+    current_angles = [0.0] * len(SERVO_NAMES)
+    link_lengths = _default_link_lengths()
 
     for step in task_plan.get("steps", []):
         if step.get("type") != "move":
             continue
 
-        joint_path = compute_joint_trajectory_for_target(
-            (step["x"], step["y"], step["z"]),
-            start_angles=current_angles,
+        target_xyz = (step["x"], step["y"], step["z"])
+        servo_angles = compute_ik_angles(
+            target_xyz,
+            link_lengths,
+            use_chain_solver=True,
         )
-        motion_plan.append({"step": step, "joint_path": joint_path})
+        print(
+            f"[IK] Target ({step['x']}, {step['y']}, {step['z']}) cm -> "
+            f"servo angles: {format_servo_angles(servo_angles)}"
+        )
+
+        joint_path = compute_joint_trajectory_for_target(
+            target_xyz,
+            start_angles=current_angles,
+            link_lengths_cm=link_lengths,
+        )
+        motion_plan.append(
+            {
+                "step": step,
+                "joint_path": joint_path,
+                "servo_angles": servo_angles,
+            }
+        )
         current_angles = joint_path[-1]
 
     return motion_plan

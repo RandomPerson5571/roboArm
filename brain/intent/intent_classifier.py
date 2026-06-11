@@ -1,11 +1,10 @@
 import os
 import json
-# import ollama
 
 from dotenv import load_dotenv
 from google import genai
 
-from intent.schema import get_commands_list_schema, get_classifier_schema, IntentModels
+from intent.schema import get_commands_list_schema, get_classifier_schema
 
 load_dotenv()
 
@@ -18,7 +17,7 @@ if api_key is None:
 client = genai.Client(api_key=api_key)
 
 
-def classify_intent(user_voice_text: str, available_objects: list[str], model: IntentModels = "gemeni") -> str:
+def classify_intent(user_voice_text: str, available_objects: list[str]) -> str:
 
     system_prompt = (
         "You are the central intent classification system for a robotic arm. "
@@ -30,18 +29,6 @@ def classify_intent(user_voice_text: str, available_objects: list[str], model: I
 
     schema = get_classifier_schema(available_objects)
     list_schema = get_commands_list_schema(schema)
-
-    # response = ollama.chat(
-    #     model='llama3.2',
-    #     messages=[
-    #         {'role': 'system', 'content': system_prompt},
-    #         {'role': 'user', 'content': f"Voice Command: '{user_voice_text}'"}
-    #     ],
-    #     # Enforce the strict JSON layout here
-    #     format=get_commands_list_schema(schema).model_json_schema()
-    # )
-    
-    # content = response['message']['content']
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",

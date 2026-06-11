@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lerobot"
+name = "roboarm"
 version = "0.5.2"
-description = "🤗 LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch"
+description = "RoboArm: an automated robotic arm"
 dynamic = ["readme"]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
@@ -22,6 +22,7 @@ DEBUG=true
 WHISPER_PAUSE_THRESHOLD=0.5 # default = 0.8
 TTS_RATE=180 # in wpm
 TTS_VOLUME=1.0 # 0.0 - 1.0
+LANGUAGE="en"
 
 # camera
 CAMERA_PATH=0
@@ -35,7 +36,8 @@ ROBOT_ACTIONS=["pick_up", "drop_off", "move_to", "home", "stop", "wave"]
 ROBOT_HOME_POSITION=[0, 0, 100]
 
 # serial
-SERIAL_PORT="COM3"
+SERIAL_PORT="COM5"
+SERIAL_BAUDRATE=115200
 
 [app.arduino]
 

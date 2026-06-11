@@ -1,0 +1,13 @@
+# Large CAD binaries — stored via Git LFS (see .gitignore: cads/ is tracked, not ignored)
+*.stl filter=lfs diff=lfs merge=lfs -text
+*.step filter=lfs diff=lfs merge=lfs -text
+*.stp filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.dae filter=lfs diff=lfs merge=lfs -text
+*.3mf filter=lfs diff=lfs merge=lfs -text
+*.iges filter=lfs diff=lfs merge=lfs -text
+*.igs filter=lfs diff=lfs merge=lfs -text
+
+# URDF/XML assembly files stay in regular Git (small text, reference the LFS meshes above)
+*.urdf text

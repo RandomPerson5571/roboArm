@@ -3,30 +3,27 @@ Camera and YOLO detection thread worker.
 """
 import time
 import threading
-import queue
 from typing import Any
 
 import cv2
 
 from camera.camera import (
-    create_detector,
     detect_objects,
     open_camera,
     release_camera,
 )
 from config import TOOL_CONFIG
-from speech.text_to_speech import announce_status
-from .message_types import FrameData
+from .message_types import FrameData, LatestFrameState
 
 
 def camera_thread_worker(
-    queue_out: queue.Queue,
+    latest_frame_state: LatestFrameState,
     stop_event: threading.Event,
     model: Any,
 ) -> None:
     """
-    Thread 1: Continuously capture frames from camera and run YOLO detection.
-    Puts FrameData on queue_out.
+    Continuously capture frames from camera and run YOLO detection.
+    Publishes the newest FrameData to latest_frame_state.
     """
     try:
         camera_path = TOOL_CONFIG["CAMERA_PATH"]
@@ -48,7 +45,7 @@ def camera_thread_worker(
                 available_objects=available_objects,
                 timestamp=time.time(),
             )
-            queue_out.put(frame_data)
+            latest_frame_state.update(frame_data)
 
             # Display the annotated frame
             cv2.imshow("Live Webcam Feed", annotated_frame)

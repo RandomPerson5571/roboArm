@@ -5,7 +5,7 @@ import pytest
 
 
 def _load_module():
-    module_path = Path(__file__).resolve().parent.parent / "inverse-kinematics" / "kinematics.py"
+    module_path = Path(__file__).resolve().parent.parent / "inverse_kinematics" / "kinematics.py"
     spec = importlib.util.spec_from_file_location("kinematics", module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module from {module_path}")

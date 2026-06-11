@@ -1,6 +1,6 @@
 import pytest
 from typing import Optional
-from planner.step_types import (
+from intent.step_types import (
     MoveStep,
     GripperStep,
     HomeStep,
@@ -9,7 +9,7 @@ from planner.step_types import (
     TaskPlan,
 )
 
-from planner.schema import Intent
+from intent.schema import Intent
 
 class TestIntentEnum:
     def test_intent_all_values(self):

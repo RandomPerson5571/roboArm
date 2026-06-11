@@ -1,55 +1,58 @@
+import xml.etree.ElementTree as ET
+
 import ikpy.chain
 import ikpy.link
 import numpy as np
+from ikpy.urdf import URDF
+from pathlib import Path
+
+_URDF_PATH = Path(__file__).resolve().parent.parent.parent / "cads" / "main_assembly.urdf"
+_IKPY_URDF_CACHE = Path(__file__).resolve().parent / "_ikpy_urdf_cache.urdf"
+
+SERVO_NAMES = ("base", "shoulder", "elbow", "wrist", "gripper")
 
 
-# Defining the 5-axis robot arm manually
-arm_chain = ikpy.chain.Chain(name='5_axis_arm', links=[
-    # Base reference point
-    ikpy.link.OriginLink(),
-    
-    # 1. WAIST MOTOR (Rotates around Z, lifts up to shoulder)
-    ikpy.link.URDFLink(
-        name="waist",
-        bounds=(np.radians(-90), np.radians(90)), # Limit to 180 deg total
-        origin_translation=[0.0, 0.0, 0.1],              # 10cm tall base
-        origin_orientation=[0.0, 0.0, 0.0],
-        rotation=[0.0, 0.0, 1.0]                  # Z-Axis
-    ),
-    
-    # 2. SHOULDER MOTOR (Rotates around Y, reaches to elbow)
-    ikpy.link.URDFLink(
-        name="shoulder",
-        bounds=(np.radians(-45), np.radians(90)),
-        origin_translation=[0.3, 0.0, 0.0],              # 30cm upper arm
-        origin_orientation=[0.0, 0.0, 0.0],
-        rotation=[0.0, 1.0, 0.0]                  # Y-Axis
-    ),
-    
-    # 3. ELBOW MOTOR (Rotates around Y, reaches to wrist)
-    ikpy.link.URDFLink(
-        name="elbow",
-        bounds=(np.radians(-120), np.radians(120)),
-        origin_translation=[0.25, 0.0, 0.0],             # 25cm forearm
-        origin_orientation=[0.0, 0.0, 0.0],
-        rotation=[0.0, 1.0, 0.0]                  # Y-Axis
-    ),
-    
-    # 4. WRIST MOTOR (Rotates around Y, controls gripper tilt)
-    ikpy.link.URDFLink(
-        name="wrist",
-        bounds=(np.radians(-90), np.radians(90)),
-        origin_translation=[0.1, 0.0, 0.0],              # 10cm wrist-to-gripper dist
-        origin_orientation=[0.0, 0.0, 0.0],
-        rotation=[0.0, 1.0, 0.0]                  # Y-Axis
-    ),
-    
-    # 5. GRIPPER (Typically handles origin_orientation roll, or acts as the end-effector)
-    ikpy.link.URDFLink(
-        name="gripper",
-        bounds=(np.radians(-180), np.radians(180)),
-        origin_translation=[0.0, 0.0, 0.0],              # End tip
-        origin_orientation=[0.0, 0.0, 0.0],
-        rotation=[1.0, 0.0, 0.0]                  # X-Axis (Roll)
-    )
-])
+def _prepare_urdf_for_ikpy(source: Path, cache: Path) -> Path:
+    """Make the Onshape URDF compatible with ikpy (root base link, revolute joints)."""
+    if cache.exists() and cache.stat().st_mtime >= source.stat().st_mtime:
+        return cache
+
+    tree = ET.parse(source)
+    root = tree.getroot()
+    for joint in root.findall("joint"):
+        joint_type = joint.attrib.get("type")
+        if joint_type == "fixed":
+            axis = joint.find("axis")
+            if axis is not None:
+                joint.remove(axis)
+        elif joint_type == "continuous":
+            joint.attrib["type"] = "revolute"
+            limit = joint.find("limit")
+            if limit is None:
+                limit = ET.SubElement(joint, "limit")
+            limit.set("lower", str(-np.pi))
+            limit.set("upper", str(np.pi))
+
+    tree.write(cache, encoding="unicode", xml_declaration=True)
+    return cache
+
+
+def _active_links_mask(links: list) -> list[bool]:
+    return [
+        not isinstance(link, ikpy.link.OriginLink)
+        and getattr(link, "joint_type", None) != "fixed"
+        for link in links
+    ]
+
+
+_ikpy_urdf_path = _prepare_urdf_for_ikpy(_URDF_PATH, _IKPY_URDF_CACHE)
+_chain_links = [ikpy.link.OriginLink()] + URDF.get_urdf_parameters(
+    str(_ikpy_urdf_path),
+    base_elements=["root"],
+)
+arm_chain = ikpy.chain.Chain(
+    _chain_links,
+    active_links_mask=_active_links_mask(_chain_links),
+    name="main_assembly",
+    urdf_metadata={"base_elements": ["root"], "urdf_file": str(_ikpy_urdf_path)},
+)
